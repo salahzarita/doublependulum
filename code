@@ -1,0 +1,141 @@
+import sympy as sp
+import numpy as np
+from scipy.integrate import odeint
+from IPython.display import display
+from matplotlib import animation
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import PillowWriter
+from PIL import Image
+import matplotlib.pyplot as pt
+
+path = "C:\\Users\\Randox\\projects\\system.png"
+display(Image.open(path))
+
+# assigning symbols to our variables
+t, m_1, m_2, g, l_1, l_2 = sp.symbols('t m_1 m_2 g l_1 l_2')
+
+th_1, th_2 = sp.symbols(r'\theta_1, \theta_2', cls=sp.Function)  # defining parameters
+th_1 = th_1(t)  # Explicitly writing them as functions of time
+th_2 = th_2(t)
+
+# defining first order derivatives
+dth_1 = sp.diff(th_1, t, 1)
+dth_2 = sp.diff(th_2, t, 1)
+
+# defining second order derivatives
+ddth_1 = sp.diff(th_1, t, 2)
+ddth_2 = sp.diff(th_2, t, 2)
+
+x_1 = sp.symbols('x_1')  # defining symbolic cartesian coordinates of first object
+y_1 = sp.symbols('y_1')
+
+x_2 = sp.symbols('x_2')  # defining symbolic cartesian coordinates of second object
+y_2 = sp.symbols('y_2')
+
+# writing cartesian coordinates in function of th_1 and th_2
+x_1 = l_1 * sp.sin(th_1)
+# display(sp.Eq(sp.S('x_1'), l_1 * sp.sin(th_1)))
+
+y_1 = -l_1 * sp.cos(th_1)
+# display(sp.Eq(sp.S('y_1'), -l_1 * sp.cos(th_1)))
+
+x_2 = x_1 + l_2 * sp.sin(th_2)
+# display(sp.Eq(sp.S('x_2'), x_1 + l_2 * sp.sin(th_2)))
+
+y_2 = y_1 - l_1 * sp.cos(th_2)
+# display(sp.Eq(sp.S('y_2'), y_1 - l_1 * sp.cos(th_2)))
+
+# defining velocity (first order derivatives of x, y) to use in obtaining kinetic energy
+v_1 = sp.sqrt(sp.diff(x_1, t) ** 2 + sp.diff(y_1, t) ** 2)
+# display(sp.Eq(sp.S('v_1'), sp.sqrt(sp.diff(x_1, t) ** 2 + sp.diff(y_1, t) ** 2)))
+
+v_2 = sp.sqrt(sp.diff(x_2, t) ** 2 + sp.diff(y_2, t) ** 2)
+# display(sp.Eq(sp.S('v_2'), sp.sqrt(sp.diff(x_2, t) ** 2 + sp.diff(y_2, t) ** 2)))
+
+# defining the lagrangian:
+L = sp.Rational(1, 2) * m_1 * v_1 ** 2 + sp.Rational(1, 2) * m_2 * v_2 ** 2 - m_1 * g * y_1 - m_1 * g * y_2
+# display(sp.Eq(sp.S('L'), sp.Rational(1, 2) * m_1 * v_1 ** 2 + sp.Rational(1, 2) * m_2 * v_2 ** 2 - m_1 * g * y_1 -
+# m_1 * g * y_2))
+
+# defining the two equations
+E_1 = sp.diff(L, th_1) - sp.diff(sp.diff(L, dth_1), t).simplify()
+E_2 = sp.diff(L, th_2) - sp.diff(sp.diff(L, dth_2), t).simplify()
+
+# solving for second derivatives, sp.solve solves the equations by assuming that E_1 and E_2 are equal to 0.
+solutions = sp.solve([E_1, E_2], (ddth_1, ddth_2), simplify=False, rational=False)
+
+# we need to convert the symbolic expressions above to numerical functions, so we can use them in a numerical python
+# solver. For this we use sp.lambdify
+dz_1dt_ = sp.lambdify((t, g, m_1, m_2, l_1, l_2, th_1, th_2, dth_1, dth_2), solutions[ddth_1])
+dz_2dt_ = sp.lambdify((t, g, m_1, m_2, l_1, l_2, th_1, th_2, dth_1, dth_2), solutions[ddth_2])
+dth_1dt_ = sp.lambdify(dth_1, dth_1)
+dth_2dt_ = sp.lambdify(dth_2, dth_2)
+
+# complicated to explain in comments hhhhh
+def dSdt(S, t, g, m_1, m_2, l_1, l_2):
+    th_1, z_1, th_2, z_2 = S
+    return [
+        dth_1dt_(z_1),
+        dz_1dt_(t, g, m_1, m_2, l_1, l_2, th_1, th_2, z_1, z_2),
+        dth_1dt_(z_2),
+        dz_2dt_(t, g, m_1, m_2, l_1, l_2, th_1, th_2, z_1, z_2),
+    ]
+
+
+t = np.linspace(0, 20, 500)
+# input
+print("The gravitational acceleration due to gravity is set to 9.81 m/s**2")
+g = 9.81
+
+m_1 = float(input("Enter the mass of the first pendulum (kg)"))
+m_2 = float(input("Enter the mass of the second pendulum (kg)"))
+l_1 = float(input("Enter the length of the first pendulum (m)"))
+l_2 = float(input("Enter the length of the second pendulum (m)"))
+th1_0 = float(input("Enter the initial angle of the first pendulum (radians)"))
+th2_0 = float(input("Enter the initial angle of the second pendulum (radians)"))
+dth1_0 = float(input("Enter the initial angular velocity of the first pendulum (radians**2)"))
+dth1_0 = float(input("Enter the initial angular velocity of the second pendulum (radians**2)"))
+print("This will take a while, please wait...")
+
+
+# solving the system
+ans = odeint(dSdt, y0=[th1_0, dth1_0, th2_0, dth1_0], t=t, args=(g, m_1, m_2, l_1, l_2))
+
+# defining arrays that contain values of th_1 and th_2
+theta1 = ans.T[0]
+theta2 = ans.T[2]
+
+
+# defining a function that takes in th_1, th_2, l_1, l_2, and returns the cartesian coordinates of the two pendulums
+# (x_1,y_1) and (x_2, y_2)
+
+def get_x1y1x2y2(t, th1, th2, l1, l2):
+    return (l1 * np.sin(th1),
+            -l1 * np.cos(th1),
+            l1 * np.sin(theta1) + l2 * np.sin(th2),
+            -l1 * np.cos(th1) - l2 * np.cos(th2))
+
+
+x1, y1, x2, y2 = get_x1y1x2y2(t, ans.T[0], ans.T[2], l_1, l_2)
+
+
+# making an animation
+def animate(i):
+    ln1.set_data([0, x1[i], x2[i]], [0, y1[i], y2[i]])
+
+
+fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+ax.set_facecolor('k')
+ax.get_xaxis().set_ticks([])  # enable this to hide x axis ticks
+ax.get_yaxis().set_ticks([])  # enable this to hide y axis ticks
+ln1, = plt.plot([], [], 'ro--', lw=3, markersize=8)
+ax.set_ylim(-4, 4)
+ax.set_xlim(-4, 4)
+
+f = input("""Enter the path where you want to store the animation 
+(example: c://Users/Randox/Downloads/double_pendulum.gif)""")
+
+ani = animation.FuncAnimation(fig, animate, frames=500, interval=30)
+ani.save(f, writer='pillow', fps=25)
+
